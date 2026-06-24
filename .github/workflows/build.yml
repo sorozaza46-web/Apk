@@ -1,0 +1,33 @@
+name: Build Bot EXE with Conda
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Depoyu Kopyala
+      uses: actions/checkout@v3
+
+    - name: Conda ve Ortam Kurulumu (environment.yml)
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        activate-environment: fishing-bot-env
+        environment-file: environment.yml
+        auto-activate-base: false
+
+    - name: PyInstaller ile EXE Oluştur
+      shell: bash -l {0}  # Conda ortamının aktif kalması için zorunlu kabuk ayarı
+      run: |
+        pyinstaller --noconsole --onefile --add-data "best.pt;." main.py
+
+    - name: EXE Dosyasını Çıktı Olarak Paylaş
+      uses: actions/upload-artifact@v4
+      with:
+        name: FishingBot-EXE
+        path: dist/main.exe
+        
