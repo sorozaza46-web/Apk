@@ -1,4 +1,4 @@
-name: Build Bot EXE (Hızlı Sürüm)
+name: Build Bot EXE (DLL Hataları Çözülmüş)
 
 on:
   push:
@@ -13,7 +13,6 @@ jobs:
     - name: Depoyu Kopyala
       uses: actions/checkout@v3
 
-    # Kütüphaneleri önbelleğe alarak süreyi kısaltıyoruz
     - name: Conda Önbelleğini Kontrol Et
       uses: actions/cache@v3
       with:
@@ -22,7 +21,7 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-conda-
 
-    - name: Conda ve Ortam Kurulumu
+    - name: Conda ve Ortam Kurulumu (environment.yml)
       uses: conda-incubator/setup-miniconda@v3
       with:
         activate-environment: fishing-bot-env
