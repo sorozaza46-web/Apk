@@ -1,4 +1,4 @@
-name: Build Bot EXE with Conda
+name: Build Bot EXE (Hızlı Sürüm)
 
 on:
   push:
@@ -13,7 +13,16 @@ jobs:
     - name: Depoyu Kopyala
       uses: actions/checkout@v3
 
-    - name: Conda ve Ortam Kurulumu (environment.yml)
+    # Kütüphaneleri önbelleğe alarak süreyi kısaltıyoruz
+    - name: Conda Önbelleğini Kontrol Et
+      uses: actions/cache@v3
+      with:
+        path: C:\Miniconda\envs\fishing-bot-env
+        key: ${{ runner.os }}-conda-${{ hashFiles('environment.yml') }}
+        restore-keys: |
+          ${{ runner.os }}-conda-
+
+    - name: Conda ve Ortam Kurulumu
       uses: conda-incubator/setup-miniconda@v3
       with:
         activate-environment: fishing-bot-env
@@ -21,7 +30,7 @@ jobs:
         auto-activate-base: false
 
     - name: PyInstaller ile EXE Oluştur
-      shell: bash -l {0}  # Conda ortamının aktif kalması için zorunlu kabuk ayarı
+      shell: bash -l {0}
       run: |
         pyinstaller --noconsole --onefile --add-data "best.pt;." main.py
 
