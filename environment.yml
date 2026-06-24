@@ -6,7 +6,6 @@ channels:
 dependencies:
   - python=3.10
   - numpy
-  - opencv
   - pillow
   - pip
   - pip:
@@ -14,4 +13,5 @@ dependencies:
     - customtkinter
     - pyautogui
     - pyinstaller
+    - opencv-python-headless  # 💡 OpenCV dll hatalarını kökten çözen headless sürüm
     
