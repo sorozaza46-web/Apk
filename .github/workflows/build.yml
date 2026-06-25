@@ -1,4 +1,4 @@
-name: Build Bot EXE (DLL Hataları Çözülmüş)
+name: Build Bot EXE
 
 on:
   push:
@@ -13,25 +13,21 @@ jobs:
     - name: Depoyu Kopyala
       uses: actions/checkout@v3
 
-    - name: Conda Önbelleğini Kontrol Et
-      uses: actions/cache@v3
+    - name: Python Kurulumu
+      uses: actions/setup-python@v4
       with:
-        path: C:\Miniconda\envs\fishing-bot-env
-        key: ${{ runner.os }}-conda-${{ hashFiles('environment.yml') }}
-        restore-keys: |
-          ${{ runner.os }}-conda-
+        python-version: '3.10'
 
-    - name: Conda ve Ortam Kurulumu (environment.yml)
-      uses: conda-incubator/setup-miniconda@v3
-      with:
-        activate-environment: fishing-bot-env
-        environment-file: environment.yml
-        auto-activate-base: false
+    - name: Tüm Kütüphaneleri Sırayla Yükle (Tek Dosya Yönetimi)
+      run: |
+        python -m pip install --upgrade pip
+        # PyInstaller çakışmasını engellemek için kararlı OpenCV ve ana kütüphaneler
+        pip install opencv-python-headless numpy pillow customtkinter pyautogui ultralytics pyinstaller
 
     - name: PyInstaller ile EXE Oluştur
-      shell: bash -l {0}
       run: |
-        pyinstaller --noconsole --onefile --add-data "best.pt;." main.py
+        # --collect-all cv2 parametresi OpenCV'nin tüm binary bileşenlerini eksiksiz paketler
+        pyinstaller --noconsole --onefile --collect-all cv2 --add-data "best.pt;." main.py
 
     - name: EXE Dosyasını Çıktı Olarak Paylaş
       uses: actions/upload-artifact@v4
