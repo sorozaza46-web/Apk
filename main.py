@@ -1,3 +1,9 @@
+import os
+import sys
+
+# OpenCV'nin Windows medya kitaplıklarıyla döngüye girip (recursion) çökmesini engeller
+os.environ["OPENCV_VIDEOIO_PRIORITY_MSMF"] = "0"
+
 import threading
 import time
 import cv2
@@ -66,8 +72,13 @@ class FishingBotApp(ctk.CTk):
 
     def load_model(self):
         try:
-            # Aynı klasördeki best.pt dosyasını okur
-            self.model = YOLO("best.pt")
+            # PyInstaller ile paketlendiğinde dosya yolunu bulmak için güvenli yöntem
+            if hasattr(sys, '_MEIPASS'):
+                model_path = os.path.join(sys._MEIPASS, "best.pt")
+            else:
+                model_path = "best.pt"
+
+            self.model = YOLO(model_path)
             self.status_label.configure(text="Durum: Model Hazır, Bot Beklemede", text_color="green")
             self.start_button.configure(state="normal")
         except Exception as e:
@@ -88,7 +99,6 @@ class FishingBotApp(ctk.CTk):
             self.start_button.configure(state="disabled")
             self.stop_button.configure(state="normal")
             
-            # Botu ana arayüzü dondurmaması için ayrı thread'de başlatıyoruz
             self.bot_thread = threading.Thread(target=self.fishing_loop, daemon=True)
             self.bot_thread.start()
 
@@ -101,21 +111,19 @@ class FishingBotApp(ctk.CTk):
 
     def fishing_loop(self):
         while self.is_running:
-            # Tüm ekranın görüntüsünü yakala
+            # Ekran görüntüsünü yakala
             screen = np.array(ImageGrab.grab())
             screen_bgr = cv2.cvtColor(screen, cv2.COLOR_RGB2BGR)
 
-            # YOLO ile ekrandaki 'rod' (olta mantarı) nesnesini ara
+            # YOLO ile 'rod' nesnesini ara
             results = self.model(screen_bgr, conf=self.confidence_level, verbose=False)
             
             for result in results:
                 boxes = result.boxes
                 for box in boxes:
-                    # Olta mantarının koordinatlarını al
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
                     
-                    # Olta mantarının etrafında partikül aramak için küçük bir alan (ROI) kes
-                    # Mantarın biraz altını ve çevresini tarıyoruz (Su sıçrama alanı)
+                    # Olta mantarının etrafındaki küçük alanı (ROI) kes
                     padding = 40
                     h, w, _ = screen_bgr.shape
                     roi_y1 = max(0, y1 - padding)
@@ -125,32 +133,30 @@ class FishingBotApp(ctk.CTk):
                     
                     roi = screen_bgr[roi_y1:roi_y2, roi_x1:roi_x2]
                     
-                    # Minecraft su partikülleri için renk filtresi (Beyaz/Açık Mavi pikseller)
-                    # Dokunuşa duyarlılığı artırmak için HSV renk uzayı kullanılabilir
+                    # Su partikülleri için HSV renk filtresi
                     hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-                    lower_particle = np.array([0, 0, 200])   # Parlak beyazımsı pikseller
+                    lower_particle = np.array([0, 0, 200])   # Parlak beyaz pikseller
                     upper_particle = np.array([180, 50, 255])
                     mask = cv2.inRange(hsv, lower_particle, upper_particle)
                     
-                    # Eğer maskelenen alanda yeterli miktarda partikül pikseli varsa (Balık vurduysa)
                     particle_count = np.sum(mask == 255)
-                    if particle_count > 15:  # Bu eşik değeri partikül yoğunluğuna göre ayarlanabilir
-                        print("[BOT] Balık yakalandı! Olta çekiliyor...")
+                    if particle_count > 15:  # Su sıçrama eşiği
+                        print("[BOT] Balık vurdu! Olta çekiliyor...")
                         
-                        # 1. Sağ Tık: Oltayı Çek
+                        # Oltayı Çek (Sağ Tık)
                         pyautogui.rightClick()
                         time.sleep(self.click_delay)
                         
-                        # 2. Sağ Tık: Oltayı Tekrar At
+                        # Oltayı Tekrar At (Sağ Tık)
                         pyautogui.rightClick()
                         
-                        # Ardışık tıklamaları önlemek için güvenli bekleme süresi
+                        # Hatalı ardışık tıklamaları önlemek için güvenli bekleme süresi
                         time.sleep(3.0) 
                         break
             
-            time.sleep(0.1) # İşlemciyi yormamak için kısa bekleme
+            time.sleep(0.1)
 
 if __name__ == "__main__":
     app = FishingBotApp()
     app.mainloop()
-  
+    
