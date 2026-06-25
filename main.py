@@ -21,24 +21,25 @@ class FishingBotApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("SonOyuncu Balık Tutma Botu v3")
+        self.title("SonOyuncu Balık Tutma Botu v4 (Hibrit Sistem)")
         self.geometry("500x550")
         self.resizable(False, False)
 
         # Bot Değişkenleri
         self.is_running = False
         self.model = None
+        self.mantar_template = None
         self.bot_thread = None
         
         # Ayarlanabilir Parametreler
-        self.confidence_level = 0.40  # best.pt modelinin mantarı rahat yakalaması için
+        self.confidence_level = 0.30  
         self.click_delay = 1.0
 
         self.setup_ui()
 
     def setup_ui(self):
         # Başlık
-        self.title_label = ctk.CTkLabel(self, text="Minecraft Otomatik Balık Botu", font=ctk.CTkFont(size=20, weight="bold"))
+        self.title_label = ctk.CTkLabel(self, text="Minecraft Hibrit Balık Botu", font=ctk.CTkFont(size=20, weight="bold"))
         self.title_label.pack(pady=15)
 
         # Güven Oranı (Confidence) Ayarı
@@ -56,16 +57,16 @@ class FishingBotApp(ctk.CTk):
         self.delay_slider.pack(pady=5)
 
         # Durum Yazısı
-        self.status_label = ctk.CTkLabel(self, text="Durum: Model Yüklenmedi", text_color="yellow", font=ctk.CTkFont(size=14, weight="bold"))
+        self.status_label = ctk.CTkLabel(self, text="Durum: Kaynaklar Yüklenmedi", text_color="yellow", font=ctk.CTkFont(size=14, weight="bold"))
         self.status_label.pack(pady=10)
 
-        # 🖥️ CANLI GERİ BİLDİRİM ALANI (KONSOL)
+        # CANLI GERİ BİLDİRİM ALANI (KONSOL)
         self.console_label = ctk.CTkLabel(self, text="Canlı Geri Bildirim:", font=ctk.CTkFont(size=12, weight="bold"))
         self.console_label.pack(pady=2)
         
         self.textbox = ctk.CTkTextbox(self, width=420, height=140, activate_scrollbars=True)
         self.textbox.pack(pady=5)
-        self.log_message("Sistem başlatıldı. Model yükleniyor...")
+        self.log_message("Sistem başlatıldı. Model ve mantar.png yükleniyor...")
 
         # Başlat / Durdur Butonları
         self.start_button = ctk.CTkButton(self, text="Botu Başlat", command=self.start_bot, state="disabled")
@@ -74,29 +75,39 @@ class FishingBotApp(ctk.CTk):
         self.stop_button = ctk.CTkButton(self, text="Botu Durdur", command=self.stop_bot, fg_color="red", state="disabled")
         self.stop_button.pack(pady=3)
 
-        # Modeli Arka Planda Yükle
-        threading.Thread(target=self.load_model, daemon=True).start()
+        # Kaynakları Arka Planda Yükle
+        threading.Thread(target=self.load_resources, daemon=True).start()
 
     def log_message(self, message):
-        """Arayüzdeki konsola zaman damgalı geri bildirim yazar"""
         current_time = time.strftime("%H:%M:%S")
         self.textbox.insert("end", f"[{current_time}] {message}\n")
         self.textbox.see("end")
 
-    def load_model(self):
+    def load_resources(self):
+        # 1. YOLO Modelini Yükle
         try:
             if hasattr(sys, '_MEIPASS'):
                 model_path = os.path.join(sys._MEIPASS, "best.pt")
+                template_path = os.path.join(sys._MEIPASS, "mantar.png")
             else:
                 model_path = "best.pt"
+                template_path = "mantar.png"
 
             self.model = YOLO(model_path)
-            self.status_label.configure(text="Durum: Model Hazır, Bot Beklemede", text_color="green")
-            self.log_message("YOLOv8 (best.pt) başarıyla yüklendi! Bot hazır.")
-            self.start_button.configure(state="normal")
+            self.log_message("YOLOv8 (best.pt) başarıyla yüklendi.")
+            
+            # 2. Şablon Mantar Görselini Yükle
+            if os.path.exists(template_path):
+                self.mantar_template = cv2.imread(template_path, cv2.IMREAD_COLOR)
+                self.log_message("Görsel referansı (mantar.png) başarıyla yüklendi.")
+                self.status_label.configure(text="Durum: Hibrit Sistem Hazır", text_color="green")
+                self.start_button.configure(state="normal")
+            else:
+                self.status_label.configure(text="Hata: 'mantar.png' eksik!", text_color="red")
+                self.log_message("HATA: Klasörde 'mantar.png' bulunamadı! Lütfen ekleyin.")
         except Exception as e:
-            self.status_label.configure(text="Hata: 'best.pt' bulunamadı!", text_color="red")
-            self.log_message(f"HATA: Model yüklenemedi. Klasörde best.pt olduğundan emin olun.")
+            self.status_label.configure(text="Hata: Yükleme başarısız!", text_color="red")
+            self.log_message(f"HATA: {str(e)}")
 
     def update_conf(self, value):
         self.confidence_level = value
@@ -136,64 +147,73 @@ class FishingBotApp(ctk.CTk):
         last_log_time = 0
 
         while self.is_running:
-            # Ekranı yakala
             screen = np.array(ImageGrab.grab())
             screen_bgr = cv2.cvtColor(screen, cv2.COLOR_RGB2BGR)
 
-            # YOLO ile 'rod' nesnesini ara
+            mantar_x, mantar_y, mantar_w, mantar_h = None, None, None, None
+            bulunma_yontemi = ""
+
+            # --- YÖNTEM 1: YOLOv8 ile Arama ---
             results = self.model(screen_bgr, conf=self.confidence_level, verbose=False)
-            
-            mantar_bulundu = False
-
             for result in results:
-                boxes = result.boxes
-                for box in boxes:
-                    mantar_bulundu = True
+                for box in result.boxes:
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    
-                    # Logların ekranda sürekli spam atmasını engellemek için saniyede 1 kez geri bildirim ver
-                    if time.time() - last_log_time > 1.0:
-                        self.log_message("🎯 Olta mantarı başarıyla takip ediliyor...")
-                        last_log_time = time.time()
+                    mantar_x, mantar_y = x1, y1
+                    mantar_w, mantar_h = (x2 - x1), (y2 - y1)
+                    bulunma_yontemi = "YOLO Yapay Zeka"
+                    break
 
-                    # Mantar çevresini kes (ROI)
-                    padding = 50
-                    h, w, _ = screen_bgr.shape
-                    roi_y1 = max(0, y1 - padding)
-                    roi_y2 = min(h, y2 + padding)
-                    roi_x1 = max(0, x1 - padding)
-                    roi_x2 = min(w, x2 + padding)
+            # --- YÖNTEM 2: Eğer YOLO Bulamazsa, Görsel Eşleştirme (mantar.png) ile Arama ---
+            if mantar_x is None and self.mantar_template is not None:
+                res = cv2.matchTemplate(screen_bgr, self.mantar_template, cv2.TM_CCOEFF_NORMED)
+                threshold = 0.65  # Benzerlik oranı (%65 eşleşirse kabul et)
+                loc = np.where(res >= threshold)
+                
+                # En yüksek eşleşen noktayı al
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+                if max_val >= threshold:
+                    mantar_x, mantar_y = max_loc
+                    mantar_h, mantar_w, _ = self.mantar_template.shape
+                    bulunma_yontemi = "Görsel Eşleştirme (mantar.png)"
+
+            # --- EĞER MANTAR BİR ŞEKİLDE BULUNDUYSA ---
+            if mantar_x is not None:
+                if time.time() - last_log_time > 1.5:
+                    self.log_message(f"🎯 Mantar kilitlendi! [{bulunma_yontemi}]")
+                    last_log_time = time.time()
+
+                # Bulunan mantarın etrafını kes (ROI)
+                padding = 50
+                h, w, _ = screen_bgr.shape
+                roi_y1 = max(0, mantar_y - padding)
+                roi_y2 = min(h, mantar_y + mantar_h + padding)
+                roi_x1 = max(0, mantar_x - padding)
+                roi_x2 = min(w, mantar_x + mantar_w + padding)
+                
+                roi = screen_bgr[roi_y1:roi_y2, roi_x1:roi_x2]
+                
+                # Su partikülü takibi
+                hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+                lower_particle = np.array([0, 0, 180])   
+                upper_particle = np.array([180, 60, 255])
+                mask = cv2.inRange(hsv, lower_particle, upper_particle)
+                
+                particle_count = np.sum(mask == 255)
+                
+                if particle_count > 10:  
+                    self.log_message(f"🐟 Balık yakalandı! Sıçrama Yoğunluğu: {particle_count}")
+                    pyautogui.rightClick()
+                    time.sleep(self.click_delay)
                     
-                    roi = screen_bgr[roi_y1:roi_y2, roi_x1:roi_x2]
+                    if not self.is_running: break
+                    self.log_message("Olta suya geri fırlatılıyor...")
+                    pyautogui.rightClick()
                     
-                    # Geliştirilmiş su partikülü HSV filtresi
-                    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-                    lower_particle = np.array([0, 0, 180])   
-                    upper_particle = np.array([180, 60, 255])
-                    mask = cv2.inRange(hsv, lower_particle, upper_particle)
-                    
-                    particle_count = np.sum(mask == 255)
-                    
-                    # Eğer su sıçraması algılandıysa (Eşik: 10 piksel)
-                    if particle_count > 10:  
-                        self.log_message(f"🐟 Balık yakalandı! Sıçrama Yoğunluğu: {particle_count}")
-                        self.log_message("Oltayı çekmek için sağ tık yapılıyor...")
-                        
-                        # Oltayı Çek
-                        pyautogui.rightClick()
-                        time.sleep(self.click_delay)
-                        
-                        if not self.is_running: break
-                        self.log_message("Olta suya geri fırlatılıyor...")
-                        pyautogui.rightClick()
-                        
-                        # Güvenli bekleme süresi
-                        time.sleep(3.0) 
-                        break
-            
-            if not mantar_bulundu and time.time() - last_log_time > 2.0:
-                self.log_message("⚠️ Olta mantarı ekranda bulunamadı! Kamerayı ayarlayın.")
-                last_log_time = time.time()
+                    time.sleep(3.0) 
+            else:
+                if time.time() - last_log_time > 2.0:
+                    self.log_message("⚠️ Mantar hiçbir yöntemle bulunamadı! Kamerayı ayarlayın.")
+                    last_log_time = time.time()
 
             time.sleep(0.1)
 
